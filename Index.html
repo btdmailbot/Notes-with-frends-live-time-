@@ -1,0 +1,666 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Vintage Social Notes</title>
+
+    <link href="https://fonts.googleapis.com/css2?family=Caveat:wght@400;600;700&family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;1,9..144,500&display=swap" rel="stylesheet">
+
+    <style>
+        :root {
+            --desk-dark: #26170f;
+            --desk-mid: #3d2416;
+            --paper: #f7ecd9;
+            --paper-2: #f0e2c8;
+            --ink: #2b1b17;
+            --accent: #b8752f;
+            --reply-ink: #22406a;
+            --line: #d8c6a6;
+        }
+
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        html, body { overscroll-behavior: none; }
+
+        body {
+            background-color: var(--desk-dark);
+            font-family: 'Fraunces', serif;
+            margin: 0;
+            height: 100dvh;
+            width: 100vw;
+            overflow: hidden;
+            user-select: none;
+            touch-action: none;
+        }
+
+        #desk {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            z-index: 1;
+            background-image:
+                linear-gradient(rgba(38,23,15,0.35), rgba(38,23,15,0.35)),
+                url('https://www.transparenttextures.com/patterns/wood-pattern.png');
+            background-repeat: repeat, repeat;
+            pointer-events: none;
+        }
+        #desk.teleporting { transition: background-position 0.8s cubic-bezier(.22,.68,0,1.21), background-size 0.8s ease; }
+
+        #board {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            transform-origin: 0 0;
+            will-change: transform;
+            z-index: 2;
+        }
+        #board.teleporting { transition: transform 0.8s cubic-bezier(.22,.68,0,1.21); }
+
+        /* DECORATIONS */
+        .decor { position: absolute; z-index: 1; pointer-events: none; }
+        .coffee-stain {
+            width: 150px; height: 150px;
+            background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><circle cx="50" cy="50" r="45" fill="none" stroke="rgba(50,25,10,0.3)" stroke-width="3"/><circle cx="52" cy="48" r="42" fill="none" stroke="rgba(50,25,10,0.15)" stroke-width="2"/><path d="M 20 20 Q 40 10 80 30" stroke="rgba(50,25,10,0.2)" stroke-width="4" fill="none"/></svg>') no-repeat center center;
+            background-size: contain; filter: blur(0.5px); opacity: 0.8;
+        }
+        .pen {
+            width: 180px; height: 12px;
+            background: linear-gradient(to bottom, #2b2b2b 0%, #1a1a1a 40%, #3a3a3a 50%, #1a1a1a 60%, #0a0a0a 100%);
+            border-radius: 6px; box-shadow: 4px 6px 8px rgba(0,0,0,0.6);
+        }
+        .pen::before {
+            content: ''; position: absolute; left: -20px; top: 1px;
+            border-top: 5px solid transparent; border-bottom: 5px solid transparent; border-right: 20px solid #d4c5b0;
+        }
+        .pen::after {
+            content: ''; position: absolute; left: -22px; top: 4.5px;
+            border-top: 1.5px solid transparent; border-bottom: 1.5px solid transparent; border-right: 6px solid #2b1b17;
+        }
+        .crumpled-paper {
+            width: 60px; height: 50px; background: #e8dbce;
+            border-radius: 8px 4px 12px 6px;
+            box-shadow: inset -2px -2px 6px rgba(0,0,0,0.15), 3px 5px 8px rgba(0,0,0,0.5);
+            background-image: linear-gradient(35deg, rgba(0,0,0,0.06) 25%, transparent 25%), linear-gradient(-35deg, rgba(0,0,0,0.06) 25%, transparent 25%);
+            clip-path: polygon(10% 0, 100% 5%, 90% 100%, 0 95%);
+        }
+
+        #empty-state {
+            position: fixed; inset: 0; display: flex; flex-direction: column;
+            align-items: center; justify-content: center; gap: 6px;
+            color: rgba(247,236,217,0.55); font-family: 'Fraunces', serif;
+            pointer-events: none; z-index: 3; text-align: center; padding: 0 20px;
+        }
+        #empty-state h2 { font-weight: 500; font-size: 1.6rem; margin: 0; }
+        #empty-state p { font-family: 'Caveat', cursive; font-size: 1.3rem; margin: 0; opacity: 0.85; }
+
+        .note {
+            width: 210px; min-height: 180px; max-height: 240px;
+            padding: 24px 24px 44px 24px;
+            box-shadow: 0 10px 24px rgba(0,0,0,0.45), 0 2px 6px rgba(0,0,0,0.3);
+            position: absolute; font-family: 'Caveat', cursive; font-size: 1.45rem;
+            color: var(--ink); display: flex; flex-direction: column;
+            background-image: linear-gradient(rgba(43,27,23,0.08) 1px, transparent 1px);
+            background-size: 100% 2rem; line-height: 2rem;
+            transition: box-shadow 0.15s ease, transform 0.2s ease, opacity 0.25s ease;
+            animation: note-in 0.35s ease; cursor: pointer; pointer-events: auto; z-index: 10;
+        }
+        @keyframes note-in { from { opacity: 0; transform: scale(0.85) rotate(0deg); } }
+        
+        .note.own-note { cursor: grab; }
+        .note.own-note:active { cursor: grabbing; z-index: 1000 !important; }
+        .note:hover { box-shadow: 0 14px 30px rgba(0,0,0,0.5), 0 2px 6px rgba(0,0,0,0.3); z-index: 20; }
+        .note.pinned { outline: 2px dashed rgba(184,117,47,0.55); outline-offset: 4px; }
+
+        .note::before {
+            content: ''; position: absolute; top: -9px; left: 50%;
+            transform: translateX(-50%) rotate(-3deg); width: 46px; height: 18px;
+            background: linear-gradient(rgba(255,255,255,0.55), rgba(244,234,222,0.65));
+            box-shadow: 0 1px 3px rgba(0,0,0,0.25); border-radius: 2px; pointer-events: none;
+        }
+
+        /* PAPER COLORS */
+        .note.style-1 { background: var(--paper); border-radius: 2px 16px 3px 12px; }
+        .note.style-2 { background: #e8dbce; border-radius: 12px 3px 16px 2px; }
+        .note.style-3 { background: #f2e6cd; border-radius: 5px; clip-path: polygon(0 0, 100% 0, 97% 98%, 3% 97%); }
+        .note.style-4 { background: #dce4e1; border-radius: 8px 3px 4px 12px; } 
+        .note.style-5 { background: #ebdce0; border-radius: 3px 12px 14px 2px; } 
+
+        .note h3 { margin: 0 0 8px 0; font-family: 'Fraunces', serif; font-weight: 600; font-size: 1.1rem; border-bottom: 2px solid var(--accent); padding-bottom: 4px; line-height: 1.4; pointer-events: none; }
+        
+        .note p { 
+            margin: 0; flex-grow: 1; white-space: pre-wrap; word-wrap: break-word; pointer-events: none;
+            display: -webkit-box; -webkit-line-clamp: 5; -webkit-box-orient: vertical;
+            overflow: hidden; text-overflow: ellipsis;
+        }
+
+        .note-stats {
+            position: absolute; bottom: 12px; left: 20px; right: 20px;
+            display: flex; justify-content: space-between; align-items: center;
+            font-size: 0.95rem; color: var(--reply-ink); font-weight: bold;
+            opacity: 0.75; pointer-events: none; font-family: 'Fraunces', serif;
+        }
+        .eye-icon-wrapper { position: relative; display: flex; align-items: center; justify-content: center; width: 30px; height: 20px; color: var(--reply-ink); }
+        .eye-icon-wrapper svg { position: absolute; width: 100%; height: 100%; stroke: currentColor; fill: none; stroke-width: 1.5; }
+        .eye-count { font-size: 0.65rem; font-weight: 700; z-index: 2; margin-top: 1px; }
+        .reply-stat { display: flex; align-items: center; gap: 4px; }
+
+        #anon-banner {
+            position: fixed; top: 18px; left: 18px;
+            background: rgba(38,23,15,0.85); color: var(--paper);
+            padding: 10px 18px; border-radius: 22px; font-family: 'Fraunces', serif;
+            font-size: 0.9rem; box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+            z-index: 9999; opacity: 0; transition: opacity 0.5s ease, transform 0.5s ease;
+            pointer-events: none;
+        }
+        #anon-banner.show { opacity: 1; transform: translateY(4px); }
+        #anon-banner span { opacity: 0.65; font-size: 0.8rem; display: block; margin-top: 2px; font-family: 'Caveat', cursive; font-size: 1rem; }
+
+        .toolbar { position: fixed; bottom: 30px; right: 24px; display: flex; flex-direction: column; align-items: center; gap: 16px; z-index: 9999; }
+        .icon-btn { background: rgba(247,236,217,0.95); border: 1px solid rgba(184,117,47,0.4); color: var(--ink); width: 50px; height: 50px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 6px 18px rgba(0,0,0,0.4); transition: transform 0.15s ease, box-shadow 0.15s ease; }
+        .icon-btn svg { width: 24px; height: 24px; stroke: var(--ink); }
+        .icon-btn:active { transform: scale(0.92); }
+        .icon-btn.primary { background: var(--desk-mid); border-color: var(--accent); width: 62px; height: 62px; }
+        .icon-btn.primary svg { stroke: var(--paper); width: 30px; height: 30px; }
+
+        .overlay { position: fixed; inset: 0; background: rgba(15, 9, 6, 0.92); z-index: 10000; display: none; justify-content: center; align-items: center; padding: 20px; }
+        .modal-container { background: var(--paper); width: 92%; max-width: 480px; min-height: 35vh; max-height: 85vh; overflow-y: auto; border-radius: 10px 26px 10px 18px; padding: 28px 24px; box-shadow: 0 25px 70px rgba(0,0,0,0.8); position: relative; background-image: linear-gradient(rgba(43,27,23,0.08) 1px, transparent 1px); background-size: 100% 2rem; line-height: 2rem; animation: rise 0.25s cubic-bezier(.22,.68,0,1.05); color: var(--ink); }
+        @keyframes rise { from { opacity: 0; transform: translateY(14px) scale(0.97); } to { opacity: 1; transform: translateY(0) scale(1); } }
+        .close-btn { position: absolute; top: 12px; right: 14px; width: 32px; height: 32px; border-radius: 50%; border: none; background: rgba(43,27,23,0.08); color: var(--ink); display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 1.1rem; }
+
+        /* INTRO OVERLAY */
+        #intro-overlay { position: fixed; inset: 0; background: rgba(15, 9, 6, 0.95); z-index: 20000; display: none; justify-content: center; align-items: center; padding: 20px; }
+        .intro-letter { background: #e8dbce; width: 100%; max-width: 400px; padding: 40px 30px; border-radius: 4px; box-shadow: 0 10px 40px rgba(0,0,0,0.8); font-family: 'Caveat', cursive; color: var(--ink); text-align: center; background-image: linear-gradient(rgba(43,27,23,0.06) 1px, transparent 1px); background-size: 100% 2rem; line-height: 2rem; transform: rotate(-2deg); animation: dropIn 0.8s cubic-bezier(0.22, 0.68, 0, 1.2); }
+        @keyframes dropIn { from { opacity: 0; transform: translateY(-50px) rotate(-10deg); } to { opacity: 1; transform: translateY(0) rotate(-2deg); } }
+        .intro-letter h1 { font-family: 'Fraunces', serif; font-size: 1.8rem; margin: 0 0 15px 0; line-height: 1.2; border-bottom: 2px solid var(--accent); padding-bottom: 10px; }
+        .intro-letter p { font-size: 1.5rem; margin-bottom: 25px; white-space: pre-wrap; }
+        .intro-btn { background: var(--desk-mid); color: var(--paper); border: 2px solid var(--accent); padding: 10px 24px; font-family: 'Fraunces', serif; font-size: 1.1rem; border-radius: 4px; cursor: pointer; transition: transform 0.2s; box-shadow: 0 4px 10px rgba(0,0,0,0.3); }
+        .intro-btn:active { transform: scale(0.95); }
+
+        .input-section { display: flex; flex-direction: column; gap: 6px; margin-top: 14px; }
+        .input-section input, .input-section textarea { background: transparent; border: none; border-bottom: 1px dashed var(--line); font-family: 'Caveat', cursive; font-size: 1.55rem; color: var(--ink); outline: none; resize: none; padding: 6px 2px; }
+        .input-section textarea { height: 90px; }
+        .input-section input:focus, .input-section textarea:focus, .reply-input-area input:focus { border-bottom-color: var(--accent); }
+
+        .color-picker-container { margin-top: 14px; display: flex; flex-direction: column; gap: 10px; }
+        .color-picker-container .hint { font-size: 1.15rem; color: var(--ink); font-family: 'Fraunces', serif; font-weight: 500; }
+        .color-options { display: flex; gap: 12px; }
+        .color-opt { width: 34px; height: 34px; border-radius: 50%; cursor: pointer; border: 2px solid transparent; transition: transform 0.2s, border-color 0.2s; box-shadow: 0 2px 6px rgba(0,0,0,0.2); }
+        .color-opt.active { border-color: var(--ink); transform: scale(1.15); box-shadow: 0 4px 10px rgba(0,0,0,0.3); }
+        .color-opt.style-1 { background: var(--paper); }
+        .color-opt.style-2 { background: #e8dbce; }
+        .color-opt.style-3 { background: #f2e6cd; }
+        .color-opt.style-4 { background: #dce4e1; }
+        .color-opt.style-5 { background: #ebdce0; }
+
+        button.action-btn { background: var(--desk-mid); color: var(--paper); border: 1px solid var(--accent); padding: 12px; font-family: 'Fraunces', serif; font-size: 1.05rem; cursor: pointer; border-radius: 8px; margin-top: 18px; transition: background 0.2s; }
+        button.action-btn:active { transform: scale(0.97); }
+
+        #minimapCanvas { background: var(--paper-2); border: 1px solid var(--line); border-radius: 8px; margin-top: 14px; width: 100%; height: auto; touch-action: none;}
+        .focus-title { font-family: 'Fraunces', serif; font-weight: 600; font-size: 1.7rem; border-bottom: 2px solid var(--accent); padding-bottom: 6px; margin: 0 0 14px 0; }
+        .focus-text { font-family: 'Caveat', cursive; font-size: 1.6rem; white-space: pre-wrap; margin-bottom: 18px; max-height: 34vh; overflow-y: auto; }
+        .replies-section { margin-top: 14px; border-top: 1px dashed var(--line); padding-top: 14px; max-height: 22vh; overflow-y: auto; }
+        .reply-item { font-family: 'Caveat', cursive; font-size: 1.5rem; color: var(--reply-ink); margin-bottom: 8px; padding-left: 14px; border-left: 2px solid rgba(34,64,106,0.3); }
+        .reply-input-area { display: flex; gap: 10px; margin-top: 18px; align-items: center; }
+        .reply-input-area input { flex-grow: 1; background: transparent; border: none; border-bottom: 1px solid var(--reply-ink); font-family: 'Caveat', cursive; font-size: 1.4rem; color: var(--reply-ink); outline: none; padding: 6px; }
+        .reply-input-area button.action-btn { margin-top: 0; padding: 10px 18px; background: var(--reply-ink); border-color: var(--reply-ink); border-radius: 8px; }
+
+        #toast { position: fixed; bottom: 18px; left: 50%; transform: translate(-50%, 20px); background: var(--desk-mid); color: var(--paper); padding: 10px 18px; border-radius: 20px; font-family: 'Fraunces', serif; font-size: 0.9rem; box-shadow: 0 6px 20px rgba(0,0,0,0.4); opacity: 0; transition: opacity 0.25s ease, transform 0.25s ease; z-index: 10000; pointer-events: none; }
+        #toast.show { opacity: 1; transform: translate(-50%, 0); }
+    </style>
+</head>
+<body>
+
+    <div id="desk"></div>
+    <div id="board"></div> 
+
+    <div id="intro-overlay">
+        <div class="intro-letter">
+            <h1>Vintage Notes</h1>
+            <p>Welcome to this anonymous space.\n\nTake a walk around, read what others left behind, or pin your own thoughts to the table.\n\nNo accounts. No history.</p>
+            <button class="intro-btn" onclick="closeIntro()">Unfold the board</button>
+        </div>
+    </div>
+
+    <div id="empty-state">
+        <h2>The table is bare</h2>
+        <p>Tap + to leave your first note</p>
+    </div>
+
+    <div id="anon-banner">
+        You are anonymous
+        <span id="anonIdLine"></span>
+    </div>
+
+    <div class="toolbar">
+        <button class="icon-btn" onclick="openMiniMap()" title="Map">
+            <svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg>
+        </button>
+        <button class="icon-btn primary" onclick="openNewNoteModal()" title="New note">
+            <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        </button>
+    </div>
+
+    <div id="new-note-overlay" class="overlay">
+        <div class="modal-container">
+            <button class="close-btn" onclick="closeModals()">✕</button>
+            <h2 class="focus-title">Pen a thought</h2>
+            
+            <div class="color-picker-container">
+                <span class="hint">Paper Style & Color:</span>
+                <div class="color-options">
+                    <div class="color-opt style-1 active" data-style="style-1" onclick="selectStyle(this)"></div>
+                    <div class="color-opt style-2" data-style="style-2" onclick="selectStyle(this)"></div>
+                    <div class="color-opt style-3" data-style="style-3" onclick="selectStyle(this)"></div>
+                    <div class="color-opt style-4" data-style="style-4" onclick="selectStyle(this)"></div>
+                    <div class="color-opt style-5" data-style="style-5" onclick="selectStyle(this)"></div>
+                </div>
+            </div>
+
+            <div class="input-section">
+                <input type="text" id="noteTitle" placeholder="A delicate title...">
+                <textarea id="noteText" placeholder="Pour your thoughts here..."></textarea>
+                <button class="action-btn" onclick="createNewNote()">Toss onto table</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="minimap-overlay" class="overlay">
+        <div class="modal-container" style="display:flex; flex-direction:column; align-items:center;">
+            <button class="close-btn" onclick="closeModals()">✕</button>
+            <h2 class="focus-title">The universe of thoughts</h2>
+            <canvas id="minimapCanvas" width="350" height="350"></canvas>
+        </div>
+    </div>
+
+    <div id="focus-overlay" class="overlay">
+        <div class="modal-container">
+            <button class="close-btn" onclick="closeModals()">✕</button>
+            <h2 class="focus-title" id="focusTitle"></h2>
+            <div class="focus-text" id="focusText"></div>
+            <div class="replies-section" id="repliesList"></div>
+            <div class="reply-input-area">
+                <input type="text" id="replyInput" placeholder="Reply with your blue pen..." onkeydown="if(event.key==='Enter') addReply()">
+                <button class="action-btn" onclick="addReply()">Pen it</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="toast"></div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+        import { getDatabase, ref, push, set, update, get, child, runTransaction, onChildAdded, onChildChanged, onChildRemoved, off, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+
+        const firebaseConfig = { databaseURL: "https://notes-7225e-default-rtdb.firebaseio.com/" };
+        const app = initializeApp(firebaseConfig);
+        const db = getDatabase(app);
+        const notesRef = ref(db, 'notes');
+
+        let anonId = localStorage.getItem('anonId');
+        if (!anonId) {
+            anonId = 'anon-' + Math.random().toString(36).slice(2, 7);
+            localStorage.setItem('anonId', anonId);
+        }
+        document.getElementById('anonIdLine').textContent = `${anonId}`;
+
+        window.notesData = [];
+        let currentFocusedNoteId = null;
+        let activeReplyRef = null;   
+        let toastTimer = null;
+        
+        window.selectedNoteStyle = 'style-1';
+        window.selectStyle = (el) => {
+            document.querySelectorAll('.color-opt').forEach(opt => opt.classList.remove('active'));
+            el.classList.add('active');
+            window.selectedNoteStyle = el.getAttribute('data-style');
+        };
+
+        let panX = 0, panY = 0;
+        let isPanning = false, startPanX = 0, startPanY = 0, hasDragged = false;
+        let isDraggingNote = false, draggedNoteElement = null, draggedNoteId = null;
+        let noteStartX = 0, noteStartY = 0, mouseStartNoteX = 0, mouseStartNoteY = 0;
+        let targetNoteId = null; 
+
+        let currentZoom = 0.85; 
+        const MIN_ZOOM = 0.4, MAX_ZOOM = 2.0;
+        const MAP_BOUNDS = 5000;
+        
+        // PERFECT PINCH-ZOOM VARIABLES (DELTA MATH)
+        let lastTouchCount = 0;
+        let lastPinchDistance = null;
+        let lastPinchMidpoint = null;
+
+        function cssEscape(str) { return String(str).replace(/[^a-zA-Z0-9_-]/g, '\\$&'); }
+        function escapeHTML(str) { const div = document.createElement('div'); div.textContent = str; return div.innerHTML; }
+
+        window.onload = () => {
+            const hasVisited = localStorage.getItem('v5_hasVisited'); 
+            
+            if (!hasVisited) {
+                // Pehli baar visit karne par exact center me rakhega jahan 'Welcome Note' hota hai
+                currentZoom = 1;
+                panX = window.innerWidth / 2 - 105; 
+                panY = window.innerHeight / 2 - 90;
+                localStorage.setItem('v5_hasVisited', 'true');
+                document.getElementById('intro-overlay').style.display = 'flex';
+            } else {
+                // Dusri baar reload par map par randomly kahin bhi spawn hoga
+                currentZoom = Math.random() * (1.1 - 0.7) + 0.7; 
+                const randomX = (Math.random() * 4000) - 2000; 
+                const randomY = (Math.random() * 4000) - 2000;
+                panX = window.innerWidth / 2 - randomX * currentZoom;
+                panY = window.innerHeight / 2 - randomY * currentZoom;
+            }
+            
+            addDecorations(); 
+            updateDeskTransform();
+            ensureWelcomeNote();
+            listenToNotes();
+
+            setTimeout(() => {
+                if(document.getElementById('intro-overlay').style.display === 'none') {
+                    document.getElementById('anon-banner').classList.add('show');
+                    setTimeout(() => document.getElementById('anon-banner').classList.remove('show'), 3500);
+                }
+            }, 300);
+        };
+
+        window.closeIntro = () => {
+            const overlay = document.getElementById('intro-overlay');
+            overlay.style.transition = "opacity 0.5s ease, transform 0.5s ease";
+            overlay.style.opacity = "0";
+            setTimeout(() => {
+                overlay.style.display = 'none';
+                document.getElementById('anon-banner').classList.add('show');
+                setTimeout(() => document.getElementById('anon-banner').classList.remove('show'), 3500);
+            }, 500);
+        };
+
+        function showToast(msg) {
+            const toast = document.getElementById('toast');
+            toast.textContent = msg; toast.classList.add('show');
+            clearTimeout(toastTimer); toastTimer = setTimeout(() => toast.classList.remove('show'), 1800);
+        }
+
+        function addDecorations() {
+            const board = document.getElementById('board');
+            const decorTypes = ['coffee-stain', 'pen', 'crumpled-paper'];
+            for (let i = 0; i < 45; i++) {
+                const el = document.createElement('div');
+                const type = decorTypes[Math.floor(Math.random() * decorTypes.length)];
+                el.className = `decor ${type}`;
+                const x = (Math.random() * 6000) - 3000;
+                const y = (Math.random() * 6000) - 3000;
+                const rot = Math.floor(Math.random() * 360);
+                el.style.left = `${x}px`; el.style.top = `${y}px`; el.style.transform = `rotate(${rot}deg)`;
+                board.appendChild(el);
+            }
+        }
+
+        async function ensureWelcomeNote() {
+            const snap = await get(child(notesRef, 'welcome'));
+            if (snap.exists()) return;
+            await set(child(notesRef, 'welcome'), {
+                title: 'Is jagah ke baare mein',
+                text: "Ye ek anonymous notice board hai — jo bhi mann mein aaye, yahan note ki tarah chhod do.\n\nSab kuch real-time hai, turant sabko dikhega.\n\nBanaya hai Ankit ne 👋",
+                x: 0, y: 0, rotation: -4, styleClass: 'style-1',
+                replyCount: 0, views: 0, pinned: true, author: 'ankit-admin', createdAt: serverTimestamp()
+            });
+        }
+
+        function listenToNotes() {
+            onChildAdded(notesRef, (snap) => { const note = { id: snap.key, ...snap.val() }; window.notesData.push(note); renderNotes(); });
+            onChildChanged(notesRef, (snap) => { const note = { id: snap.key, ...snap.val() }; const idx = window.notesData.findIndex(n => n.id === note.id); if (idx !== -1) window.notesData[idx] = note; renderNotes(); });
+            onChildRemoved(notesRef, (snap) => { window.notesData = window.notesData.filter(n => n.id !== snap.key); renderNotes(); });
+        }
+
+        window.openNewNoteModal = () => {
+            document.getElementById('new-note-overlay').style.display = 'flex';
+            if(document.querySelector('.color-opt.style-1')) window.selectStyle(document.querySelector('.color-opt.style-1'));
+        };
+        window.closeModals = () => { document.querySelectorAll('.overlay').forEach(el => el.style.display = 'none'); if (activeReplyRef) { off(activeReplyRef); activeReplyRef = null; } currentFocusedNoteId = null; };
+
+        window.openMiniMap = () => { document.getElementById('minimap-overlay').style.display = 'flex'; drawMiniMap(); };
+
+        function drawMiniMap() {
+            const canvas = document.getElementById('minimapCanvas'); const ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            window.notesData.forEach(note => {
+                let centerX = note.x + 105; let centerY = note.y + 90;
+                let mx = ((centerX + MAP_BOUNDS) / (MAP_BOUNDS * 2)) * canvas.width; 
+                let my = ((centerY + MAP_BOUNDS) / (MAP_BOUNDS * 2)) * canvas.height;
+                ctx.fillStyle = note.pinned ? '#3f6b5c' : '#b8752f'; ctx.beginPath(); ctx.arc(mx, my, note.pinned ? 5 : 4, 0, 2 * Math.PI); ctx.fill();
+            });
+            let view_DB_X = -panX / currentZoom; let view_DB_Y = -panY / currentZoom;
+            let viewX = ((view_DB_X + MAP_BOUNDS) / (MAP_BOUNDS * 2)) * canvas.width; let viewY = ((view_DB_Y + MAP_BOUNDS) / (MAP_BOUNDS * 2)) * canvas.height;
+            let viewW = ((window.innerWidth / currentZoom) / (MAP_BOUNDS * 2)) * canvas.width; let viewH = ((window.innerHeight / currentZoom) / (MAP_BOUNDS * 2)) * canvas.height;
+            ctx.strokeStyle = '#22406a'; ctx.lineWidth = 2; ctx.strokeRect(viewX, viewY, viewW, viewH);
+        }
+
+        document.getElementById('minimapCanvas').addEventListener('pointerdown', (e) => {
+            const canvas = e.target; const rect = canvas.getBoundingClientRect();
+            const clickRatioX = (e.clientX - rect.left) / rect.width;
+            const clickRatioY = (e.clientY - rect.top) / rect.height;
+            const targetDeskX = clickRatioX * (MAP_BOUNDS * 2) - MAP_BOUNDS;
+            const targetDeskY = clickRatioY * (MAP_BOUNDS * 2) - MAP_BOUNDS;
+            
+            panX = window.innerWidth / 2 - targetDeskX * currentZoom; 
+            panY = window.innerHeight / 2 - targetDeskY * currentZoom;
+            
+            closeModals(); updateDeskTransform();
+            
+            const desk = document.getElementById('desk'); const board = document.getElementById('board');
+            desk.classList.add('teleporting'); board.classList.add('teleporting');
+            setTimeout(() => { desk.classList.remove('teleporting'); board.classList.remove('teleporting'); }, 850);
+        });
+
+        // Limit badha di taki screen edge pe hit karke abruptly snap na kare
+        function updateDeskTransform() {
+            const limit = 8000; 
+            panX = Math.max(-limit, Math.min(limit, panX)); 
+            panY = Math.max(-limit, Math.min(limit, panY));
+            
+            document.getElementById('desk').style.backgroundPosition = `${panX}px ${panY}px, ${panX}px ${panY}px`;
+            document.getElementById('desk').style.backgroundSize = `auto, ${420 * currentZoom}px`;
+            document.getElementById('board').style.transform = `translate(${panX}px, ${panY}px) scale(${currentZoom})`;
+        }
+
+        // Desktop zoom via mouse wheel
+        document.addEventListener('wheel', (e) => {
+            if (document.querySelector('.overlay[style*="display: flex"]')) return;
+            e.preventDefault();
+            const delta = -e.deltaY * 0.002; 
+            const oldZoom = currentZoom;
+            const newZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, oldZoom + delta));
+            
+            if (newZoom !== oldZoom) {
+                const worldX = (e.clientX - panX) / oldZoom;
+                const worldY = (e.clientY - panY) / oldZoom;
+                currentZoom = newZoom; 
+                panX = e.clientX - worldX * currentZoom; 
+                panY = e.clientY - worldY * currentZoom;
+                updateDeskTransform();
+            }
+        }, { passive: false });
+
+        function getDistanceBetweenTouches(touches) { const dx = touches[0].clientX - touches[1].clientX; const dy = touches[0].clientY - touches[1].clientY; return Math.sqrt(dx * dx + dy * dy); }
+        function getMidpoint(touches) { return { x: (touches[0].clientX + touches[1].clientX) / 2, y: (touches[0].clientY + touches[1].clientY) / 2 }; }
+
+        function handleStart(e) {
+            if (e.target.closest('button') || e.target.closest('.overlay') || e.target.closest('input')) return;
+            
+            let touchCount = e.type.includes('touch') ? e.touches.length : 1;
+            let clientX = e.type.includes('touch') ? e.touches[0].clientX : e.clientX; 
+            let clientY = e.type.includes('touch') ? e.touches[0].clientY : e.clientY;
+
+            if (e.target.closest('.note') && touchCount === 1) {
+                const noteEl = e.target.closest('.note'); targetNoteId = noteEl.getAttribute('data-id');
+                const noteObj = window.notesData.find(n => n.id === targetNoteId);
+                if (noteObj && noteObj.author === anonId) {
+                    isDraggingNote = true; hasDragged = false; draggedNoteElement = noteEl; draggedNoteElement.classList.add('dragging');
+                    draggedNoteId = targetNoteId; noteStartX = noteObj.x; noteStartY = noteObj.y; mouseStartNoteX = clientX; mouseStartNoteY = clientY; 
+                    lastTouchCount = touchCount; return; 
+                }
+            }
+
+            if (touchCount === 2) {
+                isPanning = false; 
+                lastPinchDistance = getDistanceBetweenTouches(e.touches); 
+                lastPinchMidpoint = getMidpoint(e.touches);
+            } else if (touchCount === 1) {
+                isPanning = true; hasDragged = false; startPanX = clientX - panX; startPanY = clientY - panY; document.body.style.cursor = 'grabbing';
+            }
+            lastTouchCount = touchCount;
+        }
+
+        function handleMove(e) {
+            let touchCount = e.type.includes('touch') ? e.touches.length : 1;
+            
+            if (isDraggingNote && draggedNoteElement) {
+                e.preventDefault(); 
+                let clientX = e.type.includes('touch') ? e.touches[0].clientX : e.clientX; 
+                let clientY = e.type.includes('touch') ? e.touches[0].clientY : e.clientY;
+                if (Math.abs(clientX - mouseStartNoteX) > 5 || Math.abs(clientY - mouseStartNoteY) > 5) hasDragged = true;
+                draggedNoteElement.style.left = `${noteStartX + (clientX - mouseStartNoteX) / currentZoom}px`; draggedNoteElement.style.top = `${noteStartY + (clientY - mouseStartNoteY) / currentZoom}px`;
+            
+            } else if (touchCount === 2 && lastPinchDistance) {
+                e.preventDefault(); 
+                const currentDistance = getDistanceBetweenTouches(e.touches);
+                const currentMidpoint = getMidpoint(e.touches);
+                
+                if (lastPinchDistance > 0 && lastPinchMidpoint) {
+                    // NEW MATH: Perfectly handles Panning & Zooming simultaneously without swapping/jumping
+                    const dx = currentMidpoint.x - lastPinchMidpoint.x;
+                    const dy = currentMidpoint.y - lastPinchMidpoint.y;
+                    panX += dx;
+                    panY += dy;
+
+                    const zoomDelta = currentDistance / lastPinchDistance;
+                    const oldZoom = currentZoom;
+                    let newZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, currentZoom * zoomDelta));
+
+                    if (newZoom !== oldZoom) {
+                        const worldX = (currentMidpoint.x - panX) / oldZoom;
+                        const worldY = (currentMidpoint.y - panY) / oldZoom;
+                        
+                        currentZoom = newZoom;
+                        panX = currentMidpoint.x - worldX * currentZoom;
+                        panY = currentMidpoint.y - worldY * currentZoom;
+                    }
+                    updateDeskTransform();
+                }
+                
+                lastPinchDistance = currentDistance;
+                lastPinchMidpoint = currentMidpoint;
+                hasDragged = true;
+                
+            } else if (isPanning && touchCount === 1) {
+                e.preventDefault(); 
+                let clientX = e.type.includes('touch') ? e.touches[0].clientX : e.clientX; 
+                let clientY = e.type.includes('touch') ? e.touches[0].clientY : e.clientY;
+                if (Math.abs(clientX - startPanX - panX) > 5 || Math.abs(clientY - startPanY - panY) > 5) hasDragged = true;
+                panX = clientX - startPanX; panY = clientY - startPanY; updateDeskTransform();
+            }
+        }
+
+        function handleEnd(e) {
+            let touchCount = e.type.includes('touch') ? e.touches.length : 0;
+            
+            if (touchCount < 2) { 
+                lastPinchDistance = null; 
+                lastPinchMidpoint = null; 
+            }
+            if (touchCount === 1 && lastTouchCount === 2) {
+                // Allows smooth transition from Pinch (2 fingers) back to Pan (1 finger) without jumping
+                isPanning = true; 
+                startPanX = e.touches[0].clientX - panX; 
+                startPanY = e.touches[0].clientY - panY;
+            }
+
+            if (isDraggingNote && draggedNoteElement) {
+                if (hasDragged) {
+                    let clientX = e.type.includes('touch') ? e.changedTouches[0].clientX : e.clientX; let clientY = e.type.includes('touch') ? e.changedTouches[0].clientY : e.clientY;
+                    const finalX = noteStartX + (clientX - mouseStartNoteX) / currentZoom; const finalY = noteStartY + (clientY - mouseStartNoteY) / currentZoom;
+                    const noteObj = window.notesData.find(n => n.id === draggedNoteId); if (noteObj) { noteObj.x = finalX; noteObj.y = finalY; update(child(notesRef, draggedNoteId), { x: finalX, y: finalY }); }
+                } else { openFocus(draggedNoteId); }
+                draggedNoteElement.classList.remove('dragging'); isDraggingNote = false; draggedNoteElement = null; draggedNoteId = null; targetNoteId = null;
+            } else if (isPanning) {
+                isPanning = false; document.body.style.cursor = 'default';
+                if (!hasDragged && targetNoteId) openFocus(targetNoteId);
+                targetNoteId = null;
+            }
+            lastTouchCount = touchCount;
+        }
+
+        document.addEventListener('mousedown', handleStart); document.addEventListener('mousemove', handleMove); document.addEventListener('mouseup', handleEnd);
+        document.addEventListener('touchstart', handleStart, { passive: false }); document.addEventListener('touchmove', handleMove, { passive: false }); document.addEventListener('touchend', handleEnd);
+
+        window.createNewNote = () => {
+            const title = document.getElementById('noteTitle').value.trim(); const text = document.getElementById('noteText').value.trim();
+            if (!title && !text) { showToast('Write something first'); return; }
+            
+            const styleClass = window.selectedNoteStyle || 'style-1';
+            
+            set(push(notesRef), { 
+                title, text, 
+                x: (window.innerWidth / 2 - panX) / currentZoom - 105, 
+                y: (window.innerHeight / 2 - panY) / currentZoom - 90, 
+                rotation: Math.floor(Math.random() * 30) - 15, 
+                styleClass: styleClass, 
+                replyCount: 0, views: 0, author: anonId, createdAt: serverTimestamp() 
+            });
+            
+            document.getElementById('noteTitle').value = ''; document.getElementById('noteText').value = ''; 
+            closeModals(); showToast('Note tossed onto the table');
+        };
+
+        function renderNotes() {
+            const board = document.getElementById('board'); document.getElementById('empty-state').style.display = window.notesData.length ? 'none' : 'flex';
+            const seen = new Set();
+            window.notesData.forEach(note => {
+                seen.add(String(note.id)); let noteEl = board.querySelector(`.note[data-id="${cssEscape(note.id)}"]`);
+                if (!noteEl) { noteEl = document.createElement('div'); noteEl.setAttribute('data-id', note.id); board.appendChild(noteEl); }
+                
+                noteEl.className = `note ${note.styleClass || 'style-1'}${note.pinned ? ' pinned' : ''} ${note.author === anonId ? 'own-note' : ''}`;
+                noteEl.style.left = `${note.x}px`; noteEl.style.top = `${note.y}px`; noteEl.style.transform = `rotate(${note.rotation || 0}deg)`;
+                
+                let contentHTML = (note.title ? `<h3>${escapeHTML(note.title)}</h3>` : '') + `<p>${escapeHTML(note.text || '')}</p>`;
+                
+                let statsHTML = `<div class="note-stats">`;
+                statsHTML += `
+                    <div class="eye-icon-wrapper" title="Views">
+                        <svg viewBox="0 0 24 24">
+                            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                        </svg>
+                        <span class="eye-count">${note.views || 0}</span>
+                    </div>`;
+                if (note.replyCount) statsHTML += `<div class="reply-stat">💬 ${note.replyCount}</div>`;
+                statsHTML += `</div>`;
+                
+                noteEl.innerHTML = contentHTML + statsHTML;
+            });
+            board.querySelectorAll('.note').forEach(el => { if (!seen.has(el.getAttribute('data-id'))) el.remove(); });
+        }
+
+        window.openFocus = (noteId) => {
+            const note = window.notesData.find(n => n.id === noteId); if (!note) return;
+            
+            if (!sessionStorage.getItem('viewed_' + noteId)) {
+                runTransaction(child(notesRef, noteId + '/views'), (curr) => (curr || 0) + 1);
+                sessionStorage.setItem('viewed_' + noteId, 'true');
+            }
+
+            currentFocusedNoteId = noteId; document.getElementById('focusTitle').innerText = note.title || ''; document.getElementById('focusTitle').style.display = note.title ? 'block' : 'none';
+            document.getElementById('focusText').innerText = note.text || ''; document.getElementById('focus-overlay').style.display = 'flex';
+            const repliesList = document.getElementById('repliesList'); repliesList.innerHTML = '<div class="reply-loading">loading replies…</div>';
+            if (activeReplyRef) off(activeReplyRef); activeReplyRef = ref(db, 'replies/' + noteId); let firstLoad = true;
+            onChildAdded(activeReplyRef, (snap) => { if (firstLoad) { repliesList.innerHTML = ''; firstLoad = false; } const div = document.createElement('div'); div.className = 'reply-item'; div.innerText = snap.val().text; repliesList.appendChild(div); }, () => { if (firstLoad) { repliesList.innerHTML = ''; firstLoad = false; } });
+        };
+
+        window.addReply = () => {
+            const text = document.getElementById('replyInput').value.trim(); if (!text || !currentFocusedNoteId) return;
+            push(ref(db, 'replies/' + currentFocusedNoteId), { text, author: anonId, createdAt: serverTimestamp() });
+            runTransaction(child(notesRef, currentFocusedNoteId + '/replyCount'), (curr) => (curr || 0) + 1); document.getElementById('replyInput').value = '';
+        };
+    </script>
+</body>
+</html>
