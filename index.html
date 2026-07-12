@@ -37,9 +37,6 @@
             position: fixed;
             top: 0; left: 0; right: 0; bottom: 0;
             z-index: 1;
-            background-image:
-                linear-gradient(rgba(38,23,15,0.35), rgba(38,23,15,0.35)),
-                url('https://www.transparenttextures.com/patterns/wood-pattern.png');
             background-repeat: repeat, repeat;
             pointer-events: none;
         }
@@ -105,6 +102,16 @@
         }
         @keyframes note-in { from { opacity: 0; transform: scale(0.85) rotate(0deg); } }
         
+        /* DELETE ANIMATION */
+        @keyframes fallDown {
+            100% { transform: translateY(120vh) rotate(45deg); opacity: 0; }
+        }
+        .note.falling {
+            animation: fallDown 0.6s cubic-bezier(0.55, 0.085, 0.68, 0.53) forwards !important;
+            pointer-events: none !important;
+            z-index: 9999 !important;
+        }
+        
         .note.own-note { cursor: grab; }
         .note.own-note:active { cursor: grabbing; z-index: 1000 !important; }
         .note:hover { box-shadow: 0 14px 30px rgba(0,0,0,0.5), 0 2px 6px rgba(0,0,0,0.3); z-index: 20; }
@@ -164,7 +171,11 @@
         .overlay { position: fixed; inset: 0; background: rgba(15, 9, 6, 0.92); z-index: 10000; display: none; justify-content: center; align-items: center; padding: 20px; }
         .modal-container { background: var(--paper); width: 92%; max-width: 480px; min-height: 35vh; max-height: 85vh; overflow-y: auto; border-radius: 10px 26px 10px 18px; padding: 28px 24px; box-shadow: 0 25px 70px rgba(0,0,0,0.8); position: relative; background-image: linear-gradient(rgba(43,27,23,0.08) 1px, transparent 1px); background-size: 100% 2rem; line-height: 2rem; animation: rise 0.25s cubic-bezier(.22,.68,0,1.05); color: var(--ink); }
         @keyframes rise { from { opacity: 0; transform: translateY(14px) scale(0.97); } to { opacity: 1; transform: translateY(0) scale(1); } }
-        .close-btn { position: absolute; top: 12px; right: 14px; width: 32px; height: 32px; border-radius: 50%; border: none; background: rgba(43,27,23,0.08); color: var(--ink); display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 1.1rem; }
+        
+        .close-btn { position: absolute; top: 12px; right: 14px; width: 32px; height: 32px; border-radius: 50%; border: none; background: rgba(43,27,23,0.08); color: var(--ink); display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 1.1rem; transition: background 0.2s, color 0.2s; }
+        .close-btn:active { transform: scale(0.9); }
+        .delete-btn-style { right: 54px; color: #a94442; background: rgba(169, 68, 66, 0.1); }
+        .delete-btn-style:hover { background: rgba(169, 68, 66, 0.2); }
 
         /* INTRO OVERLAY */
         #intro-overlay { position: fixed; inset: 0; background: rgba(15, 9, 6, 0.95); z-index: 20000; display: none; justify-content: center; align-items: center; padding: 20px; }
@@ -276,7 +287,11 @@
 
     <div id="focus-overlay" class="overlay">
         <div class="modal-container">
-            <button class="close-btn" onclick="closeModals()">✕</button>
+            <button class="close-btn" onclick="closeModals()" title="Close">✕</button>
+            <button class="close-btn delete-btn-style" id="deleteNoteBtn" onclick="deleteCurrentNote()" style="display: none;" title="Delete Note">
+                <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+            </button>
+
             <h2 class="focus-title" id="focusTitle"></h2>
             <div class="focus-text" id="focusText"></div>
             <div class="replies-section" id="repliesList"></div>
@@ -291,7 +306,7 @@
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-        import { getDatabase, ref, push, set, update, get, child, runTransaction, onChildAdded, onChildChanged, onChildRemoved, off, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+        import { getDatabase, ref, push, set, update, get, child, runTransaction, onChildAdded, onChildChanged, onChildRemoved, remove, off, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
 
         const firebaseConfig = { databaseURL: "https://notes-7225e-default-rtdb.firebaseio.com/" };
         const app = initializeApp(firebaseConfig);
@@ -313,10 +328,13 @@
         let isAppJustLoaded = true;
         setTimeout(() => isAppJustLoaded = false, 2500); 
         
+        // NEW TEXTURES & COLORS
         const backgrounds = [
-            "linear-gradient(rgba(38,23,15,0.35), rgba(38,23,15,0.35)), url('https://www.transparenttextures.com/patterns/wood-pattern.png')", 
-            "linear-gradient(rgba(15,10,8,0.75), rgba(15,10,8,0.75)), url('https://www.transparenttextures.com/patterns/wood-pattern.png')", 
-            "linear-gradient(rgba(212,197,176,0.25), rgba(212,197,176,0.25)), url('https://www.transparenttextures.com/patterns/cork-board.png')" 
+            "linear-gradient(rgba(38,23,15,0.4), rgba(38,23,15,0.4)), url('https://www.transparenttextures.com/patterns/leather.png')", // Leather (Brownish)
+            "linear-gradient(rgba(65,35,80,0.85), rgba(65,35,80,0.85)), url('https://www.transparenttextures.com/patterns/stardust.png')", // Purple
+            "linear-gradient(rgba(30,65,45,0.85), rgba(30,65,45,0.85)), url('https://www.transparenttextures.com/patterns/stardust.png')", // Green
+            "linear-gradient(rgba(90,25,25,0.85), rgba(90,25,25,0.85)), url('https://www.transparenttextures.com/patterns/stardust.png')", // Red
+            "linear-gradient(rgba(35,35,35,0.95), rgba(35,35,35,0.95)), url('https://www.transparenttextures.com/patterns/cubes.png')" // Soft Matte (Dark Grey)
         ];
         let currentBgIdx = localStorage.getItem('deskBg') ? parseInt(localStorage.getItem('deskBg')) : 0;
         
@@ -327,7 +345,7 @@
         };
 
         function sendPushNotification(title, body) {
-            if (Notification.permission === 'granted' && !isAppJustLoaded) {
+            if ('Notification' in window && Notification.permission === 'granted' && !isAppJustLoaded) {
                 new Notification(title, { body: body, icon: 'https://cdn-icons-png.flaticon.com/512/3237/3237472.png' });
             }
         }
@@ -349,7 +367,6 @@
         const MIN_ZOOM = 0.4, MAX_ZOOM = 2.0;
         const MAP_BOUNDS = 5000;
         
-        // PERFECT PINCH-ZOOM VARIABLES (DELTA MATH)
         let lastTouchCount = 0;
         let lastPinchDistance = null;
         let lastPinchMidpoint = null;
@@ -357,42 +374,12 @@
         function cssEscape(str) { return String(str).replace(/[^a-zA-Z0-9_-]/g, '\\$&'); }
         function escapeHTML(str) { const div = document.createElement('div'); div.textContent = str; return div.innerHTML; }
 
-        window.onload = () => {
-            document.getElementById('desk').style.backgroundImage = backgrounds[currentBgIdx];
-            if (Notification.permission !== 'granted' && Notification.permission !== 'denied') { Notification.requestPermission(); }
-            
-            const hasVisited = localStorage.getItem('v5_hasVisited'); 
-            
-            if (!hasVisited) {
-                // Pehli baar visit karne par exact center me rakhega jahan 'Welcome Note' hota hai
-                currentZoom = 1;
-                panX = window.innerWidth / 2 - 105; 
-                panY = window.innerHeight / 2 - 90;
-                localStorage.setItem('v5_hasVisited', 'true');
-                document.getElementById('intro-overlay').style.display = 'flex';
-            } else {
-                // Dusri baar reload par map par randomly kahin bhi spawn hoga
-                currentZoom = Math.random() * (1.1 - 0.7) + 0.7; 
-                const randomX = (Math.random() * 4000) - 2000; 
-                const randomY = (Math.random() * 4000) - 2000;
-                panX = window.innerWidth / 2 - randomX * currentZoom;
-                panY = window.innerHeight / 2 - randomY * currentZoom;
-            }
-            
-            addDecorations(); 
-            updateDeskTransform();
-            ensureWelcomeNote();
-            listenToNotes();
-
-            setTimeout(() => {
-                if(document.getElementById('intro-overlay').style.display === 'none') {
-                    document.getElementById('anon-banner').classList.add('show');
-                    setTimeout(() => document.getElementById('anon-banner').classList.remove('show'), 3500);
-                }
-            }, 300);
-        };
-
         window.closeIntro = () => {
+            // Button pe click hone par permission maangenge, tabhi browser allow karega
+            if ('Notification' in window && Notification.permission !== 'granted' && Notification.permission !== 'denied') { 
+                Notification.requestPermission(); 
+            }
+
             const overlay = document.getElementById('intro-overlay');
             overlay.style.transition = "opacity 0.5s ease, transform 0.5s ease";
             overlay.style.opacity = "0";
@@ -489,7 +476,6 @@
             setTimeout(() => { desk.classList.remove('teleporting'); board.classList.remove('teleporting'); }, 850);
         });
 
-        // Limit badha di taki screen edge pe hit karke abruptly snap na kare
         function updateDeskTransform() {
             const limit = 8000; 
             panX = Math.max(-limit, Math.min(limit, panX)); 
@@ -500,7 +486,6 @@
             document.getElementById('board').style.transform = `translate(${panX}px, ${panY}px) scale(${currentZoom})`;
         }
 
-        // Desktop zoom via mouse wheel
         document.addEventListener('wheel', (e) => {
             if (document.querySelector('.overlay[style*="display: flex"]')) return;
             e.preventDefault();
@@ -564,7 +549,6 @@
                 const currentMidpoint = getMidpoint(e.touches);
                 
                 if (lastPinchDistance > 0 && lastPinchMidpoint) {
-                    // NEW MATH: Perfectly handles Panning & Zooming simultaneously without swapping/jumping
                     const dx = currentMidpoint.x - lastPinchMidpoint.x;
                     const dy = currentMidpoint.y - lastPinchMidpoint.y;
                     panX += dx;
@@ -606,7 +590,6 @@
                 lastPinchMidpoint = null; 
             }
             if (touchCount === 1 && lastTouchCount === 2) {
-                // Allows smooth transition from Pinch (2 fingers) back to Pan (1 finger) without jumping
                 isPanning = true; 
                 startPanX = e.touches[0].clientX - panX; 
                 startPanY = e.touches[0].clientY - panY;
@@ -685,7 +668,12 @@
                 sessionStorage.setItem('viewed_' + noteId, 'true');
             }
 
-            currentFocusedNoteId = noteId; document.getElementById('focusTitle').innerText = note.title || ''; document.getElementById('focusTitle').style.display = note.title ? 'block' : 'none';
+            currentFocusedNoteId = noteId; 
+            
+            // Delete button visibility check
+            document.getElementById('deleteNoteBtn').style.display = (note.author === anonId) ? 'flex' : 'none';
+
+            document.getElementById('focusTitle').innerText = note.title || ''; document.getElementById('focusTitle').style.display = note.title ? 'block' : 'none';
             document.getElementById('focusText').innerText = note.text || ''; document.getElementById('focus-overlay').style.display = 'flex';
             const repliesList = document.getElementById('repliesList'); repliesList.innerHTML = '<div class="reply-loading">loading replies…</div>';
             
@@ -712,11 +700,63 @@
             });
         };
 
+        window.deleteCurrentNote = () => {
+            if (!currentFocusedNoteId) return;
+            const noteId = currentFocusedNoteId;
+            closeModals(); // Modal band karo
+            
+            const noteEl = document.querySelector(`.note[data-id="${cssEscape(noteId)}"]`);
+            if (noteEl) {
+                noteEl.classList.add('falling'); // Girne ka animation
+                setTimeout(() => {
+                    remove(child(notesRef, noteId)); // Animation khatam hone par Firebase se hatao
+                }, 600); 
+            } else {
+                remove(child(notesRef, noteId));
+            }
+            showToast('Note deleted');
+        };
+
         window.addReply = () => {
             const text = document.getElementById('replyInput').value.trim(); if (!text || !currentFocusedNoteId) return;
             push(ref(db, 'replies/' + currentFocusedNoteId), { text, author: anonId, createdAt: serverTimestamp() });
             runTransaction(child(notesRef, currentFocusedNoteId + '/replyCount'), (curr) => (curr || 0) + 1); document.getElementById('replyInput').value = '';
         };
+
+        // --- APP INITIALIZATION (Replaces window.onload for module execution) ---
+        function initApp() {
+            document.getElementById('desk').style.backgroundImage = backgrounds[currentBgIdx];
+            
+            const hasVisited = localStorage.getItem('v5_hasVisited'); 
+            
+            if (!hasVisited) {
+                currentZoom = 1;
+                panX = window.innerWidth / 2 - 105; 
+                panY = window.innerHeight / 2 - 90;
+                localStorage.setItem('v5_hasVisited', 'true');
+                document.getElementById('intro-overlay').style.display = 'flex';
+            } else {
+                currentZoom = Math.random() * (1.1 - 0.7) + 0.7; 
+                const randomX = (Math.random() * 4000) - 2000; 
+                const randomY = (Math.random() * 4000) - 2000;
+                panX = window.innerWidth / 2 - randomX * currentZoom;
+                panY = window.innerHeight / 2 - randomY * currentZoom;
+            }
+            
+            addDecorations(); 
+            updateDeskTransform();
+            ensureWelcomeNote();
+            listenToNotes();
+
+            setTimeout(() => {
+                if(document.getElementById('intro-overlay').style.display === 'none') {
+                    document.getElementById('anon-banner').classList.add('show');
+                    setTimeout(() => document.getElementById('anon-banner').classList.remove('show'), 3500);
+                }
+            }, 300);
+        }
+
+        initApp(); // Run immediately
     </script>
 </body>
 </html>
