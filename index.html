@@ -325,9 +325,6 @@
         let activeReplyRef = null;   
         let toastTimer = null;
         
-        let isAppJustLoaded = true;
-        setTimeout(() => isAppJustLoaded = false, 2500); 
-        
         // NEW TEXTURES & COLORS
         const backgrounds = [
             "linear-gradient(rgba(38,23,15,0.4), rgba(38,23,15,0.4)), url('https://www.transparenttextures.com/patterns/leather.png')", // Leather (Brownish)
@@ -344,10 +341,26 @@
             localStorage.setItem('deskBg', currentBgIdx);
         };
 
-        function sendPushNotification(title, body) {
-            if ('Notification' in window && Notification.permission === 'granted' && !isAppJustLoaded) {
-                new Notification(title, { body: body, icon: 'https://cdn-icons-png.flaticon.com/512/3237/3237472.png' });
-            }
+        // ONESIGNAL NOTIFICATION FUNCTION
+        function sendOneSignalNotification(title, message) {
+            const appId = "d82b7bd5-12c0-4f46-b223-081e35df1ec2"; 
+            
+            // Yahan apni OneSignal dashboard wali REST API key paste kijiye
+            const restApiKey = "YAHAN_APNI_REST_API_KEY_DALEIN"; 
+
+            fetch("https://onesignal.com/api/v1/notifications", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json; charset=utf-8",
+                    "Authorization": "Basic " + restApiKey
+                },
+                body: JSON.stringify({
+                    app_id: appId,
+                    included_segments: ["Total Subscriptions"], 
+                    headings: { en: title },
+                    contents: { en: message }
+                })
+            }).catch(err => console.log("Notification error:", err));
         }
         
         window.selectedNoteStyle = 'style-1';
@@ -375,11 +388,6 @@
         function escapeHTML(str) { const div = document.createElement('div'); div.textContent = str; return div.innerHTML; }
 
         window.closeIntro = () => {
-            // Button pe click hone par permission maangenge, tabhi browser allow karega
-            if ('Notification' in window && Notification.permission !== 'granted' && Notification.permission !== 'denied') { 
-                Notification.requestPermission(); 
-            }
-
             const overlay = document.getElementById('intro-overlay');
             overlay.style.transition = "opacity 0.5s ease, transform 0.5s ease";
             overlay.style.opacity = "0";
@@ -427,10 +435,6 @@
                 const note = { id: snap.key, ...snap.val() }; 
                 window.notesData.push(note); 
                 renderNotes(); 
-                
-                if (!isAppJustLoaded && note.author !== anonId) {
-                    sendPushNotification("Naya Note Aaya Hai", note.title || note.text.substring(0, 30) + "...");
-                }
             });
             onChildChanged(notesRef, (snap) => { const note = { id: snap.key, ...snap.val() }; const idx = window.notesData.findIndex(n => n.id === note.id); if (idx !== -1) window.notesData[idx] = note; renderNotes(); });
             onChildRemoved(notesRef, (snap) => { window.notesData = window.notesData.filter(n => n.id !== snap.key); renderNotes(); });
@@ -597,7 +601,8 @@
 
             if (isDraggingNote && draggedNoteElement) {
                 if (hasDragged) {
-                    let clientX = e.type.includes('touch') ? e.changedTouches[0].clientX : e.clientX; let clientY = e.type.includes('touch') ? e.changedTouches[0].clientY : e.clientY;
+                    let clientX = e.type.includes('touch') ? e.changedTouches[0].clientX : e.clientX; 
+                    let clientY = e.type.includes('touch') ? e.changedTouches[0].clientY : e.clientY;
                     const finalX = noteStartX + (clientX - mouseStartNoteX) / currentZoom; const finalY = noteStartY + (clientY - mouseStartNoteY) / currentZoom;
                     const noteObj = window.notesData.find(n => n.id === draggedNoteId); if (noteObj) { noteObj.x = finalX; noteObj.y = finalY; update(child(notesRef, draggedNoteId), { x: finalX, y: finalY }); }
                 } else { openFocus(draggedNoteId); }
@@ -626,6 +631,8 @@
                 rotation: Math.floor(Math.random() * 30) - 15, 
                 styleClass: styleClass, 
                 replyCount: 0, views: 0, author: anonId, createdAt: serverTimestamp() 
+            }).then(() => {
+                sendOneSignalNotification("New Note on the desk", title || text.substring(0, 30) + "...");
             });
             
             document.getElementById('noteTitle').value = ''; document.getElementById('noteText').value = ''; 
@@ -633,23 +640,35 @@
         };
 
         function renderNotes() {
-            const board = document.getElementById('board'); document.getElementById('empty-state').style.display = window.notesData.length ? 'none' : 'flex';
+            const board = document.getElementById('board'); 
+            document.getElementById('empty-state').style.display = window.notesData.length ? 'none' : 'flex';
             const seen = new Set();
+            
             window.notesData.forEach(note => {
-                seen.add(String(note.id)); let noteEl = board.querySelector(`.note[data-id="${cssEscape(note.id)}"]`);
-                if (!noteEl) { noteEl = document.createElement('div'); noteEl.setAttribute('data-id', note.id); board.appendChild(noteEl); }
+                seen.add(String(note.id)); 
+                let noteEl = board.querySelector(`.note[data-id="${cssEscape(note.id)}"]`);
+                
+                if (!noteEl) { 
+                    noteEl = document.createElement('div'); 
+                    noteEl.setAttribute('data-id', note.id); 
+                    board.appendChild(noteEl); 
+                }
+                
+                // Falling animation ko preserve karna
+                let isFalling = noteEl.classList.contains('falling');
                 
                 noteEl.className = `note ${note.styleClass || 'style-1'}${note.pinned ? ' pinned' : ''} ${note.author === anonId ? 'own-note' : ''}`;
-                noteEl.style.left = `${note.x}px`; noteEl.style.top = `${note.y}px`; noteEl.style.transform = `rotate(${note.rotation || 0}deg)`;
+                
+                if (isFalling) noteEl.classList.add('falling');
+                
+                noteEl.style.left = `${note.x}px`; noteEl.style.top = `${note.y}px`; 
+                noteEl.style.transform = `rotate(${note.rotation || 0}deg)`;
                 
                 let contentHTML = (note.title ? `<h3>${escapeHTML(note.title)}</h3>` : '') + `<p>${escapeHTML(note.text || '')}</p>`;
-                
                 let statsHTML = `<div class="note-stats">`;
                 statsHTML += `
                     <div class="eye-icon-wrapper" title="Views">
-                        <svg viewBox="0 0 24 24">
-                            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
-                        </svg>
+                        <svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path></svg>
                         <span class="eye-count">${note.views || 0}</span>
                     </div>`;
                 if (note.replyCount) statsHTML += `<div class="reply-stat">💬 ${note.replyCount}</div>`;
@@ -657,7 +676,13 @@
                 
                 noteEl.innerHTML = contentHTML + statsHTML;
             });
-            board.querySelectorAll('.note').forEach(el => { if (!seen.has(el.getAttribute('data-id'))) el.remove(); });
+            
+            // Cleanup phase mein girti hui notes ko ignore karna
+            board.querySelectorAll('.note').forEach(el => { 
+                if (!seen.has(el.getAttribute('data-id')) && !el.classList.contains('falling')) {
+                    el.remove(); 
+                }
+            });
         }
 
         window.openFocus = (noteId) => {
@@ -670,7 +695,6 @@
 
             currentFocusedNoteId = noteId; 
             
-            // Delete button visibility check
             document.getElementById('deleteNoteBtn').style.display = (note.author === anonId) ? 'flex' : 'none';
 
             document.getElementById('focusTitle').innerText = note.title || ''; document.getElementById('focusTitle').style.display = note.title ? 'block' : 'none';
@@ -681,8 +705,6 @@
             activeReplyRef = ref(db, 'replies/' + noteId); 
             
             let firstLoad = true;
-            let isReplyJustLoaded = true;
-            setTimeout(() => isReplyJustLoaded = false, 1000); 
 
             onChildAdded(activeReplyRef, (snap) => { 
                 if (firstLoad) { repliesList.innerHTML = ''; firstLoad = false; } 
@@ -691,10 +713,6 @@
                 div.className = 'reply-item'; 
                 div.innerText = reply.text; 
                 repliesList.appendChild(div); 
-                
-                if (!isReplyJustLoaded && reply.author !== anonId) {
-                    sendPushNotification("Note par naya reply", reply.text.substring(0, 30) + "...");
-                }
             }, () => { 
                 if (firstLoad) { repliesList.innerHTML = ''; firstLoad = false; } 
             });
@@ -703,27 +721,40 @@
         window.deleteCurrentNote = () => {
             if (!currentFocusedNoteId) return;
             const noteId = currentFocusedNoteId;
-            closeModals(); // Modal band karo
+            
+            closeModals(); 
+            
+            // Firebase ko turant delete command bhejein
+            remove(child(notesRef, noteId)).catch(err => {
+                console.error("Firebase Delete Error:", err);
+                showToast("Delete fail! Firebase Rules check karein.");
+            });
+            
+            // Immediate local list se remove karna
+            window.notesData = window.notesData.filter(n => n.id !== noteId);
             
             const noteEl = document.querySelector(`.note[data-id="${cssEscape(noteId)}"]`);
             if (noteEl) {
-                noteEl.classList.add('falling'); // Girne ka animation
+                noteEl.classList.add('falling'); 
                 setTimeout(() => {
-                    remove(child(notesRef, noteId)); // Animation khatam hone par Firebase se hatao
+                    noteEl.remove();
                 }, 600); 
-            } else {
-                remove(child(notesRef, noteId));
             }
+            
             showToast('Note deleted');
         };
 
         window.addReply = () => {
             const text = document.getElementById('replyInput').value.trim(); if (!text || !currentFocusedNoteId) return;
-            push(ref(db, 'replies/' + currentFocusedNoteId), { text, author: anonId, createdAt: serverTimestamp() });
+            
+            push(ref(db, 'replies/' + currentFocusedNoteId), { text, author: anonId, createdAt: serverTimestamp() })
+            .then(() => {
+                sendOneSignalNotification("New reply on a note", text.substring(0, 30) + "...");
+            });
+            
             runTransaction(child(notesRef, currentFocusedNoteId + '/replyCount'), (curr) => (curr || 0) + 1); document.getElementById('replyInput').value = '';
         };
 
-        // --- APP INITIALIZATION (Replaces window.onload for module execution) ---
         function initApp() {
             document.getElementById('desk').style.backgroundImage = backgrounds[currentBgIdx];
             
@@ -756,7 +787,7 @@
             }, 300);
         }
 
-        initApp(); // Run immediately
+        initApp(); 
     </script>
 </body>
 </html>
